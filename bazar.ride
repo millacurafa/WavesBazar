@@ -58,23 +58,85 @@ func getValueBalanceSupplier(account: String) = {
     getNumberByKey(getKeyBalanceSupplier(account))
 }
 
+let VOTERS = 3
+let QUORUM = 2
+let VOTING = "voting"
+let REVEAL = "reveal"
+let FEATURED = "featured"
+let DELISTED = "delisted"
 
+#Comment: Commit-Reveal Voting keys:
+
+func getKeyCommit(item: String, user: String) = {
+    item + "_" + user + "_commit"
+}
+func getValueCommit(item: String, user: String) = {
+    getStrByKey(getKeyCommit(item, user))
+}
+func getKeyCommitsCount(item: String) = {
+    item + "_comcnt"
+}
+func getValueCommitsCount(item: String) = {
+    getNumberByKey(getKeyCommitsCount(item))
+}
+func getKeyReveal(item: String, user: String) = {
+    item + "_" + user + "_reveal"
+}
+func getValueReveal(item: String, user: String) = {
+    getStrByKey(getKeyReveal(item, user))
+}
+func getKeyItemStatus(item: String) = {
+    item + "_status"
+}
+func getValueItemStatus(item: String) = {
+    getStrByKey(getKeyItemStatus(item))
+}
+func getKeyVoteCount(item: String, vote: String) = {
+    item + "_res:" + vote
+}
+func getValueVoteCount(item: String, vote: String) = {
+    getNumberByKey(getKeyVoteCount(item, vote))
+}
 
 @Callable(i)
-func addItem(title: String, price: Int, data: String) = {
-    let supplierAddress = toBase58String(i.caller.bytes)
-    let item = getKeyItem(supplierAddress, title)
-    if ( price <= 0 ) then throw("amount lower than item price")
-    else if ( getValueItemSupplier(item) != NONE ) then throw("an item already exists")
-    else {
+func voteReveal(item: String, vote: String, salt: String) = {
+    let user = toBase58String(i.caller.bytes)
+    let status = getValueItemStatus(item)
+    let newVoteCount = getValueVoteCount(item, vote) + 1
+    if (toBase58String(sha256(toBytes(vote + salt))) != getValueCommit(item, user))
+    then throw("reveal data not valid")
+    else if (getValueCommitsCount(item) < VOTERS) then throw("max number of votes not reached")
+    else if (getValueReveal(item, user) != NONE) then throw("user already in the register")
+    else if (status != VOTING && status != REVEAL) then throw("wrong status")
+    else if (vote != FEATURED && vote != DELISTED) then throw("wrong vote")
+    else if (status == FEATURED || status == DELISTED) then throw("vote has finished")
+    else{
         WriteSet([
-            DataEntry(getKeyItemSupplier(item), supplierAddress),
-            DataEntry(getKeyItemPrice(item), price),
-            DataEntry(getKeyItemData(item), data)  
+        DataEntry(getKeyReveal(item, user), vote),
+        DataEntry(getKeyVoteCount(item, vote), newVoteCount),
+        DataEntry(getKeyItemStatus(item), if(newVoteCount >= QUORUM) then vote else REVEAL)
         ])
     }
 }
 
+
+@Callable(i)
+func voteCommit(item: String, hash:String) = {
+    let user = toBase58String(i.caller.bytes)
+    let commits = getValueCommitsCount(item)
+    let status = getValueItemStatus(item)
+    if ( commits >= VOTERS) then throw("reached max num voters")
+    else if (getValueCommit(item, user) != NONE) then throw("user has already voted")
+    else if (getKeyItemSupplier(item) == NONE) then throw("item does not exist")
+    else if (status !=NONE && status != VOTING) then throw("voting is not possible")
+    else {
+        WriteSet([
+        DataEntry(getKeyCommit(item, user), hash),
+        DataEntry(getKeyCommitsCount(item), commits + 1),
+        DataEntry(getKeyItemStatus(item), if(commits == VOTERS) then REVEAL else VOTING)
+        ])
+    }
+}
 @Callable(i)
 func purchase(item:String) ={
     let pmt = extract(i.payment)
@@ -113,4 +175,17 @@ func withdraw() = {
 
 }
 
-
+@Callable(i)
+func addItem(title: String, price: Int, data: String) = {
+    let supplierAddress = toBase58String(i.caller.bytes)
+    let item = getKeyItem(supplierAddress, title)
+    if ( price <= 0 ) then throw("amount lower than item price")
+    else if ( getValueItemSupplier(item) != NONE ) then throw("an item already exists")
+    else {
+        WriteSet([
+            DataEntry(getKeyItemSupplier(item), supplierAddress),
+            DataEntry(getKeyItemPrice(item), price),
+            DataEntry(getKeyItemData(item), data)  
+        ])
+    }
+}
