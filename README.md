@@ -1,2 +1,3 @@
 # WavesBazar
-Waves bazar Smart contract
+Waves bazar Smart contract (bazar.ride)
+
