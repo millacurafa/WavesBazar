@@ -97,6 +97,21 @@ func getKeyVoteCount(item: String, vote: String) = {
 func getValueVoteCount(item: String, vote: String) = {
     getNumberByKey(getKeyVoteCount(item, vote))
 }
+func getExtAddressOracle() = {
+    extract(addressFromString("3N2j5qyw6oAZs6mbey6SqefmmTuFNLAKFHx"))
+}
+let BLACKLISTED = "blacklist"
+
+func getExtKeyItemWhiteListStatus(account: String) = {
+    account + "_verifier_status"
+}
+func getExtValueItemWhitelistStatus(oracle: Address, account: String) = {
+    let str = match getString(oracle, getExtKeyItemWhiteListStatus(account)){
+        case a: String => a 
+        case _ => NONE
+    }
+    str
+}
 
 @Callable(i)
 func voteReveal(item: String, vote: String, salt: String) = {
@@ -179,13 +194,16 @@ func withdraw() = {
 func addItem(title: String, price: Int, data: String) = {
     let supplierAddress = toBase58String(i.caller.bytes)
     let item = getKeyItem(supplierAddress, title)
+    let supplierwhitelist = getExtValueItemWhitelistStatus(getExtAddressOracle(), supplierAddress)
     if ( price <= 0 ) then throw("amount lower than item price")
     else if ( getValueItemSupplier(item) != NONE ) then throw("an item already exists")
+    else if (supplierwhitelist == BLACKLISTED) then throw("supplier's account has been blacklisted")
     else {
         WriteSet([
             DataEntry(getKeyItemSupplier(item), supplierAddress),
             DataEntry(getKeyItemPrice(item), price),
-            DataEntry(getKeyItemData(item), data)  
+            DataEntry(getKeyItemData(item), data),
+            DataEntry(getExtKeyItemWhiteListStatus(supplierAddress), supplierwhitelist)
         ])
     }
 }
